@@ -404,6 +404,31 @@ static void process_search(globals_t *g)
       }
       break;
 
+      // show matching commands for a specific path and recursed
+      case e_onepath_r:
+      {
+         string redpath = "\033[1;31m";
+         redpath += g->path_str;
+         redpath += "\033[0m";
+         if (g->cmd_map.find(g->path_str) == g->cmd_map.end()) {
+            cout << "path " << redpath << " not found" << endl;
+            break;
+         }
+         for ( auto it : g->cmd_map) {
+            size_t pos = it.first.find(g->path_str);
+            if (pos == string::npos)
+               continue;
+            string subpath = it.first;
+            for ( auto cmd : it.second ) {
+               if (regex_match(cmd, regex(match))) {
+                  cout << subpath.replace(0, g->path_str.size(), redpath) << ": ";
+                  cout << regex_replace(cmd, regex(g->search_str), replace) << endl;
+               }
+            }
+         }
+      }
+      break;
+
       // show all commands for a specific path
       case e_onepath_all:
       {
@@ -418,6 +443,28 @@ static void process_search(globals_t *g)
       }
       break;
 
+      // show all commands for a specific path recursively
+      case e_onepath_all_r:
+      {
+         string redpath = "\033[1;31m";
+         redpath += g->path_str;
+         redpath += "\033[0m";
+         if (g->cmd_map.find(g->path_str) == g->cmd_map.end()) {
+            cout << "path " << redpath << " not found" << endl;
+            break;
+         }
+         for ( auto it : g->cmd_map) {
+            size_t pos = it.first.find(g->path_str);
+            if (pos == string::npos)
+               continue;
+            string subpath = it.first;
+            cout << subpath.replace(0, g->path_str.size(), redpath) << endl;
+            for ( auto cmd : it.second ) {
+               cout << "  " << cmd << endl;
+            }
+         }
+      }
+      break;
       default:
          fprintf(stderr, "could not determine search mode\n");
          usage(g->argv0.c_str());
