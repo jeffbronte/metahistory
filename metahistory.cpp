@@ -1,3 +1,11 @@
+// TODO
+//    auto create files
+//    MH_DEBUG to flag debug prints
+//    convert to class
+//    simple and extended usage
+//    finish README.md
+
+
 /*****************************************************************************
  h (metahistory) - utility to either store or search command line history
                  - overcomes some shortcomings with the bash history builtin
@@ -11,7 +19,7 @@ Setup:
 
       trap 'cmd=$BASH_COMMAND; h -s $cmd' DEBUG
       export MH_STORE=~/.mh_store
-      export MH_SKIP=~/.mh_skip
+      export MH_IGNORE=~/.mh_ignore
 
 Usage:
 
@@ -32,13 +40,8 @@ Usage:
 
 Syntax Summary:
 
-      save mode for base trap only:
-
-         h -s [cmd]
-      
-      search mode for user:
-
-         h [-r|-p] [path] [search]
+      search mode (for user):             h [-r|-p] [path] [search]
+      save mode (for bash trap only):     h -s [cmd]
 
 Search Modes:
 
@@ -46,29 +49,29 @@ Search Modes:
       show all paths for one match                          h -p match
       show all strings in one path (match all)              h [path]
       show all strings in one path recursively (match all)  h -r [path]
-      show match for one path                               h [path] [match]
-      show match for one path recursively                   h -r [path] [match]
+      show matches for one path                             h [path] [match]
+      show matches for one path recursively                 h -r [path] [match]
 
 Examples:
 
-   find commands with the string 'make':
+   show commands with the string 'make':
    
       'h make'               
    
-   find commands with the string 'make' and dump all working directories:
+   show commands with the string 'make' and dump all working directories:
 
       'h -p make'                  
 
-   find commands with the string 'make' and dump all working directories
+   show commands with the string 'make' and dump all working directories
     recursively below the specified path:
 
       'h -r ~/jbronte make'
 
-   find commands with the string 'make' run from the specified directory:
+   show commands with the string 'make' run from the specified directory:
 
       'h ~/jbronte make'
 
-   find all commands run from the specified directory:
+   show all commands run from the specified directory:
 
       'h ~/jbronte/utils/metahistory'
 
@@ -83,9 +86,9 @@ Examples:
 #include <unordered_map>
 #include <regex>
 
-#define HERE printf("%d\n",__LINE__);
-
 using namespace std;
+
+#define HERE printf("%d\n", __LINE__)
 
 typedef enum {
    e_null,           
@@ -103,14 +106,16 @@ typedef struct {
    bool is_search;
    bool is_recurse;
    bool show_path;
+   bool debug;
    string fname;
    string search_str;
    string path_str;
    string cmd_str;
    string cmd_pwd;
    string argv0;
+   string cmd0;
    search_e search_mode;
-   vector<string> skip_list;
+   vector<string> ignore_list;
    unordered_map<string, vector<string>> cmd_map;
 } globals_t;
 
@@ -160,9 +165,10 @@ static string make_path(const char *path)
    return "";
 }
 
-static string make_cmd(int argc, char **argv)
+static string make_cmd(globals_t *g, int argc, char **argv)
 {
    string cmd;
+   g->cmd0 = argv[2];
    for(int i=2;i<argc;i++) {
       cmd += argv[i];
       cmd += " ";
@@ -181,7 +187,7 @@ static void process_cmdline(globals_t *g, int argc, char **argv)
    if (sopt == "-s") {
       g->is_save = true;
       g->is_search = false; 
-      g->cmd_str = make_cmd(argc, argv);
+      g->cmd_str = make_cmd(g, argc, argv);
       return;
    }
 
@@ -203,7 +209,7 @@ static void process_cmdline(globals_t *g, int argc, char **argv)
    if (g->is_save) {
       if (argc < 3)
          usage(argv[0]);
-      g->cmd_str = make_cmd(argc, argv);
+      g->cmd_str = make_cmd(g, argc, argv);
       return;
    }
 
@@ -232,7 +238,7 @@ static void process_cmdline(globals_t *g, int argc, char **argv)
 static void init_globals(globals_t *g)
 {
    char *fname = getenv("MH_STORE");
-   if (!fname) 
+   if (!fname)
       exit(0);
 
    g->fname = fname;
@@ -241,9 +247,9 @@ static void init_globals(globals_t *g)
    g->is_save = false;
    g->is_recurse = false;
    g->show_path = false;
-   g->path_str.clear();
-   g->search_str.clear();
-   g->cmd_str.clear();
+
+   char *debug = getenv("MH_DEBUG");
+   g->debug = debug ? true : false;
 }
 
 
@@ -291,13 +297,42 @@ static void process_load(globals_t *g)
    infile.close();
 }
 
+static bool is_ignore(globals_t *g)
+{
+   char *fname = getenv("MH_IGNORE");
+   if (!fname)
+      return true;
+
+   ifstream infile(fname);
+   if (!infile.is_open()) {
+      exit(-1);
+   }
+
+   // load the file into the map of paths and cmds
+   while (infile.good()) {
+      string str;
+      getline(infile, str);
+      if (str.length()) {
+         if (g->cmd0 == str) {
+            if (g->debug)
+               cout << str << " ignored" << endl;
+            infile.close();
+            return true;
+         }
+      }
+   }
+   infile.close();
+   return false;
+}
+
 static void process_save(globals_t *g)
 {
    if (!g->cmd_str.compare(0,2,"h "))
       return;
 
-   // check if on skip list
-
+   // check if on ignore list
+   if (is_ignore(g))
+      return;
 
    // check is duplicate
    process_load(g);
@@ -308,7 +343,10 @@ static void process_save(globals_t *g)
       cout << "could not open " << g->fname << endl;
       exit(-1);
    }
-cout << "add: " << g->cmd_pwd << " : " << g->cmd_str << endl;
+
+   if (g->debug)
+      cout << "add: " << g->cmd_pwd << " : " << g->cmd_str << endl;
+
    outfile << g->cmd_pwd << " \036" << g->cmd_str << endl;
    outfile.close();
 }
